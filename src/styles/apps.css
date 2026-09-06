@@ -1122,6 +1122,29 @@
 .terminal-line.error {
   color: #dfab93;
 }
+.terminal-line.muted {
+  color: #6f8767;
+}
+/* Streamed process output is dense: tighten it so installs read like a real console. */
+.terminal-line.output + .terminal-line.output,
+.terminal-line.error + .terminal-line.error,
+.terminal-line.output + .terminal-line.error,
+.terminal-line.error + .terminal-line.output {
+  margin-top: 0;
+}
+.terminal-tabbar > button.terminal-stop {
+  color: #d9c79a;
+  max-width: 60%;
+}
+.terminal-tabbar > button.terminal-stop:hover {
+  color: #f0d6a6;
+}
+.terminal-running {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a4b99b;
+}
 .terminal-prompt {
   color: #97ba7e;
   font-size: 11px;

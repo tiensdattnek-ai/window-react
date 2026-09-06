@@ -1,18 +1,51 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronDown, ShieldCheck, TerminalSquare } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  Loader2,
+  Package,
+  ShieldCheck,
+  Square,
+  TerminalSquare,
+} from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { WindowLogo } from '../components/AppIcon';
 import { APPS, WALLPAPERS } from '../lib/data';
 import { calculate } from '../lib/calculator';
+import { NPM_COMMANDS, parseCommand, runNpm } from '../lib/npm';
 import { formatBytes } from '../lib/utils';
 import type { AppId } from '../lib/types';
 
 interface Output {
   id: number;
-  type: 'input' | 'output' | 'error';
+  type: 'input' | 'output' | 'error' | 'muted';
   text: string;
   path?: string;
+  /** Streamed process output that stopped mid-line; the next chunk of the same stream extends it. */
+  open?: boolean;
 }
+const COMMANDS = [
+  'help',
+  'ls',
+  'cd',
+  'pwd',
+  'cat',
+  'mkdir',
+  'touch',
+  'echo',
+  'rm',
+  'open',
+  'calc',
+  'theme',
+  'wallpaper',
+  'sysinfo',
+  'neofetch',
+  'date',
+  'whoami',
+  'history',
+  'clear',
+  ...NPM_COMMANDS,
+];
 export function Terminal() {
   const { files, createFile, updateFile, trashFile, openApp, prefs, updatePrefs } = useWorkspace();
   const [lines, setLines] = useState<Output[]>([]);
@@ -21,12 +54,19 @@ export function Terminal() {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const counter = useRef(0);
+  const abort = useRef<AbortController | null>(null);
   useEffect(() => {
     scroll.current?.scrollTo(0, scroll.current.scrollHeight);
   }, [lines, busy]);
+  // Closing the window stops a running npm process on the server too.
+  useEffect(() => () => abort.current?.abort(), []);
+  function stopProcess() {
+    abort.current?.abort();
+  }
   function pathString(id: string): string {
     if (id === 'root') return '~';
     const file = files.find((f) => f.id === id && !f.trashed);
@@ -52,6 +92,24 @@ export function Terminal() {
   function append(text: string, type: Output['type'] = 'output') {
     setLines((items) => [...items.slice(-300), { id: ++counter.current, type, text }]);
   }
+  // Process output arrives in chunks; keep extending the last streamed line instead of adding
+  // a new block per chunk, and split on newlines so long installs stay readable.
+  function stream(text: string, type: 'output' | 'error') {
+    if (!text) return;
+    setLines((items) => {
+      const next = [...items];
+      const pieces = text.split(/\r?\n/);
+      const complete = text.endsWith('\n');
+      if (complete) pieces.pop(); // the empty piece after the final newline
+      const last = next[next.length - 1];
+      if (last?.open && last.type === type)
+        next[next.length - 1] = { ...last, text: last.text + (pieces.shift() ?? ''), open: false };
+      for (const piece of pieces) next.push({ id: ++counter.current, type, text: piece });
+      // A chunk may stop mid-line; keep that line open so the next chunk continues it.
+      if (!complete) next[next.length - 1] = { ...next[next.length - 1], open: true };
+      return next.slice(-600);
+    });
+  }
   async function execute() {
     const raw = command.trim();
     if (!raw || busy) return;
@@ -62,17 +120,41 @@ export function Terminal() {
     setHistory((items) => [...items, raw]);
     setHistoryIndex(-1);
     setCommand('');
-    const parts =
-      raw.match(/"[^"]*"|'[^']*'|[^\s]+/g)?.map((s) => s.replace(/^['"]|['"]$/g, '')) || [];
-    const cmd = parts.shift()?.toLowerCase();
+    const parsed = parseCommand(raw);
+    const parts = [...parsed.args];
+    const cmd = parsed.command.toLowerCase();
     const argument = parts.join(' ');
     try {
       switch (cmd) {
         case 'help':
           append(
-            'A FEW THINGS YOU CAN DO\n\n  help                 A little guidance\n  ls [folder]          See what’s here\n  cd <folder>          Go somewhere\n  pwd                  Know where you are\n  cat <file>           Read a little something\n  mkdir <name>         Make some room\n  touch <name>         A fresh, empty file\n  echo <text>          Say something (or > file.txt)\n  rm <file>            Move to Recycle Bin\n  open <app>           Open an app\n  calc <expression>    A little arithmetic\n  theme light|dark     Set the mood\n  wallpaper <name>     serenity · dusk · bloom\n  sysinfo              Check in with Node.js\n  neofetch             Meet your workspace\n  date · whoami        Here and now\n  history · clear      Look back. Or start fresh.\n\nTip: use quotes around file names with spaces. ↑ ↓ for history.',
+            'A FEW THINGS YOU CAN DO\n\n  help                 A little guidance\n  ls [folder]          See what’s here\n  cd <folder>          Go somewhere\n  pwd                  Know where you are\n  cat <file>           Read a little something\n  mkdir <name>         Make some room\n  touch <name>         A fresh, empty file\n  echo <text>          Say something (or > file.txt)\n  rm <file>            Move to Recycle Bin\n  open <app>           Open an app\n  calc <expression>    A little arithmetic\n  theme light|dark     Set the mood\n  wallpaper <name>     serenity · dusk · bloom\n  sysinfo              Check in with Node.js\n  neofetch             Meet your workspace\n  date · whoami        Here and now\n  history · clear      Look back. Or start fresh.\n\nNODE.JS PACKAGES\n\n  npm <args>           Real npm on the Node.js host, e.g. npm i -g opencode-ai\n  npx <args>           Run a package binary, e.g. npx cowsay hello\n  Ctrl + C             Stop the running command\n\nTip: use quotes around file names with spaces. ↑ ↓ for history.',
           );
           break;
+        case 'npm':
+        case 'npx': {
+          if (!parts.length)
+            throw new Error(`Usage: ${cmd} <arguments>. Try “${cmd} --version” or “npm help”.`);
+          setBusy(true);
+          const controller = new AbortController();
+          abort.current = controller;
+          setRunning([cmd, ...parts].join(' '));
+          try {
+            const result = await runNpm(cmd, parts, {
+              signal: controller.signal,
+              onStart: (info) => append(`$ ${info.command}\nin ${info.cwd}`, 'muted'),
+              onOutput: stream,
+            });
+            if (result.code === 0)
+              append(`✓ Done in ${(result.duration / 1000).toFixed(1)}s`, 'muted');
+            else if (result.signal) append(`Stopped (${result.signal}).`, 'error');
+            else throw new Error(`${cmd} exited with code ${result.code}.`);
+          } finally {
+            abort.current = null;
+            setRunning(null);
+          }
+          break;
+        }
         case 'clear':
           setLines([]);
           break;
@@ -200,7 +282,7 @@ export function Terminal() {
           if (!res.ok) throw new Error('Node.js is unavailable.');
           const info = await res.json();
           append(
-            `NODE.JS SERVER\n\n  Runtime     ${info.runtime}\n  Platform    ${info.platform} / ${info.architecture}\n  Memory      ${formatBytes(info.memory.used)} (process)\n  CPUs        ${info.cpus}\n  Uptime      ${info.uptime}s\n  Mode        ${info.mode}\n\nThis describes the Node.js host, not your physical device.`,
+            `NODE.JS SERVER\n\n  Runtime     ${info.runtime}\n  Platform    ${info.platform} / ${info.architecture}\n  Memory      ${formatBytes(info.memory.used)} (process)\n  CPUs        ${info.cpus}\n  Uptime      ${info.uptime}s\n  Mode        ${info.mode}\n  npm         ${info.npm?.enabled ? `enabled · ${info.npm.cwd}` : 'disabled'}\n\nThis describes the Node.js host, not your physical device.`,
           );
           break;
         }
@@ -208,7 +290,9 @@ export function Terminal() {
           throw new Error(`“${cmd}” is not a workspace command. Type help to see what’s possible.`);
       }
     } catch (error) {
-      append(error instanceof Error ? error.message : 'Something didn’t go as planned.', 'error');
+      if (error instanceof DOMException && error.name === 'AbortError') append('^C', 'muted');
+      else
+        append(error instanceof Error ? error.message : 'Something didn’t go as planned.', 'error');
     } finally {
       setBusy(false);
       requestAnimationFrame(() => input.current?.focus());
@@ -222,14 +306,24 @@ export function Terminal() {
           Workspace shell
           <ChevronDown size={12} />
         </span>
-        <button
-          onClick={() => {
-            setCommand('help');
-            input.current?.focus();
-          }}
-        >
-          A little guidance <ArrowUpRight size={12} />
-        </button>
+        {running ? (
+          <button className="terminal-stop" onClick={stopProcess} aria-label="Stop running command">
+            <Loader2 size={11} className="spinning" />
+            <span className="terminal-running" title={running}>
+              {running}
+            </span>
+            <Square size={9} fill="currentColor" /> Stop
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setCommand('help');
+              input.current?.focus();
+            }}
+          >
+            A little guidance <ArrowUpRight size={12} />
+          </button>
+        )}
       </div>
       <div
         className="terminal-scroll"
@@ -273,14 +367,21 @@ export function Terminal() {
           <input
             ref={input}
             value={command}
-            disabled={busy}
+            readOnly={busy}
             aria-label="Terminal command"
-            placeholder={busy ? 'One moment…' : ''}
+            placeholder={running ? 'Running… press Ctrl + C to stop' : busy ? 'One moment…' : ''}
             onChange={(e) => setCommand(e.target.value)}
             autoCapitalize="off"
             autoComplete="off"
             spellCheck={false}
             onKeyDown={(e) => {
+              if (busy) {
+                if (e.ctrlKey && e.key === 'c' && running) {
+                  e.preventDefault();
+                  stopProcess();
+                }
+                return;
+              }
               if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 const index = historyIndex < 0 ? history.length - 1 : Math.max(0, historyIndex - 1);
@@ -311,28 +412,7 @@ export function Terminal() {
               }
               if (e.key === 'Tab') {
                 e.preventDefault();
-                const cmds = [
-                  'help',
-                  'ls',
-                  'cd',
-                  'pwd',
-                  'cat',
-                  'mkdir',
-                  'touch',
-                  'echo',
-                  'rm',
-                  'open',
-                  'calc',
-                  'theme',
-                  'wallpaper',
-                  'sysinfo',
-                  'neofetch',
-                  'date',
-                  'whoami',
-                  'history',
-                  'clear',
-                ];
-                const matches = cmds.filter((c) => c.startsWith(command));
+                const matches = COMMANDS.filter((c) => c.startsWith(command));
                 if (matches.length === 1) setCommand(matches[0] + ' ');
               }
             }}
@@ -341,8 +421,10 @@ export function Terminal() {
       </div>
       <div className="terminal-status">
         <span>
-          <ShieldCheck size={12} />
-          Sandboxed workspace. No system commands.
+          {running ? <Package size={12} /> : <ShieldCheck size={12} />}
+          {running
+            ? `npm is running on the Node.js host · ${running}`
+            : 'Virtual files. Only npm / npx reach the Node.js host.'}
         </span>
         <span>
           UTF-8 <span className="status-divider" />

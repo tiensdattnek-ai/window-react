@@ -142,6 +142,34 @@ test('terminal manipulates virtual files and safely calculates', async ({ page }
   await expect(page.locator('.terminal-line.output').last()).toContainText('Node.js');
 });
 
+test('terminal runs real npm on the Node.js host and streams its output', async ({ page }) => {
+  await openApp(page, 'Terminal');
+  const command = page.getByRole('textbox', { name: 'Terminal command' });
+  await command.fill('npm --version');
+  await command.press('Enter');
+  await expect(page.locator('.terminal-line.output').last()).toHaveText(/^\d+\.\d+\.\d+$/);
+  await expect(page.locator('.terminal-line.muted').last()).toContainText('Done in');
+  // Works without the registry, so the suite stays offline-friendly like the weather mock.
+  await command.fill('npm config get registry');
+  await command.press('Enter');
+  await expect(page.locator('.terminal-line.output').last()).toHaveText(/^https?:\/\//, {
+    timeout: 60_000,
+  });
+  // Only npm and npx reach the host; anything else stays a workspace command.
+  await command.fill('node -e "process.exit(1)"');
+  await command.press('Enter');
+  await expect(page.locator('.terminal-line.error').last()).toContainText(
+    'not a workspace command',
+  );
+  // A failing npm command reports its exit code instead of hanging.
+  await command.fill('npm run this-script-does-not-exist');
+  await command.press('Enter');
+  await expect(page.locator('.terminal-line.error').last()).toContainText('exited with code 1', {
+    timeout: 60_000,
+  });
+  await expect(command).toBeEditable();
+});
+
 test('personalization changes theme, wallpaper and profile persistently', async ({ page }) => {
   await page.getByRole('button', { name: 'Make it yours', exact: true }).click();
   await page.getByRole('button', { name: 'Coastal hour', exact: true }).click();

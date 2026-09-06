@@ -3,12 +3,14 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createNpmRunner } from './npm.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const production = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 const app = express();
 const server = http.createServer(app);
 const port = Number(process.env.PORT) || 3000;
+const npm = createNpmRunner(root);
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -29,8 +31,11 @@ app.get('/api/system', (_req, res) =>
     memory: { used: process.memoryUsage().rss, total: os.totalmem() },
     cpus: os.availableParallelism(),
     mode: production ? 'production' : 'development',
+    npm: { enabled: npm.enabled, cwd: npm.cwd, running: npm.running() },
   }),
 );
+// Real npm / npx on the Node.js host, streamed back as NDJSON. See server/npm.js.
+app.post('/api/npm', express.json({ limit: '16kb' }), npm.handler);
 
 const weatherCache = new Map();
 async function getJson(url) {
@@ -90,8 +95,12 @@ if (production) {
 }
 server.listen(port, '0.0.0.0', () => {
   console.log(
-    `\n  ▦ Window React v1.0\n  ➜ Local:   http://localhost:${port}\n  ➜ Network: http://0.0.0.0:${port}\n  ➜ Mode:    ${production ? 'production' : 'development'}\n`,
+    `\n  ▦ Window React v1.0\n  ➜ Local:   http://localhost:${port}\n  ➜ Network: http://0.0.0.0:${port}\n  ➜ Mode:    ${production ? 'production' : 'development'}\n  ➜ npm:     ${npm.enabled ? `enabled, working folder ${npm.cwd}` : 'disabled (WR_NPM=off)'}\n`,
   );
 });
 for (const signal of ['SIGINT', 'SIGTERM'])
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {
+    npm.stopAll();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  });
