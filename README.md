@@ -34,22 +34,22 @@ $env:PORT=8080; npm run dev
 
 ## Có gì bên trong?
 
-| Thành phần                   | Chức năng                                                                                                                                                                                                      |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Desktop & Window Manager** | Kéo, resize 8 hướng, thu nhỏ, phóng to, snap trái/phải/toàn màn hình, chuyển cửa sổ, Show Desktop.                                                                                                             |
-| **Start Menu**               | Tìm kiếm ứng dụng/tệp, danh sách ứng dụng, tệp gần đây, menu nghỉ và khởi động lại.                                                                                                                            |
-| **File Explorer**            | Home dashboard, collections, danh sách/lưới, tìm kiếm, sắp xếp, thư mục mới, đổi tên, sao chép, yêu thích, kéo tệp vào thư mục, upload/download, Recycle Bin và khôi phục.                                     |
-| **Notes**                    | Nhiều ghi chú, Markdown preview an toàn, toolbar, tìm kiếm nội dung, tên ghi chú, đếm từ, export và tự lưu.                                                                                                    |
-| **Browser**                  | Tab, lịch sử, thanh địa chỉ, tìm kiếm DuckDuckGo, bookmark, iframe và nút mở trang ngoài.                                                                                                                      |
-| **Music**                    | Ba soundscape ambient nguyên bản, âm thanh thật, play/pause, seek, next/previous, shuffle, repeat, favorites, queue và volume. Nhạc tiếp tục khi đóng hoặc thu nhỏ ứng dụng.                                   |
-| **Photos**                   | Gallery, favorites, xem ảnh, chuyển ảnh, zoom, xoay, tải xuống và đặt hình nền.                                                                                                                                |
-| **Terminal**                 | Shell an toàn thao tác trên hệ thống tệp ảo; lịch sử lệnh, autocomplete tên lệnh, thông tin thật từ Node.js. Chạy được **`npm` / `npx` thật** trên máy chủ Node.js, output stream trực tiếp, Ctrl + C để dừng. |
-| **Calculator**               | Phép toán chuẩn, phần trăm, bình phương, căn, nghịch đảo, bộ nhớ, lịch sử và bàn phím. Không dùng `eval`.                                                                                                      |
-| **Calendar**                 | Chuyển tháng, chọn ngày, tạo/xóa lịch hẹn, chọn giờ và màu, lưu cục bộ.                                                                                                                                        |
-| **Weather**                  | Tìm thành phố, thời tiết hiện tại và dự báo 7 ngày từ Open-Meteo, trạng thái offline rõ ràng.                                                                                                                  |
-| **Focus**                    | Pomodoro 25/5/15 phút, play/pause/reset, danh sách việc cần làm, đếm phiên, nhạc nền và chế độ yên tĩnh.                                                                                                       |
-| **Settings**                 | Ba hình nền, ảnh riêng, sáu accent, sáng/tối, transparency, reduced motion, cỡ icon, độ sáng workspace, tên người dùng, thông tin Node.js, backup/restore/reset.                                               |
-| **System panels**            | Quick Settings, lịch trên taskbar, notification center, toast và màn hình nghỉ.                                                                                                                                |
+| Thành phần                   | Chức năng                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Desktop & Window Manager** | Kéo, resize 8 hướng, thu nhỏ, phóng to, snap trái/phải/toàn màn hình, chuyển cửa sổ, Show Desktop.                                                                                                                                                                                                                                                                     |
+| **Start Menu**               | Tìm kiếm ứng dụng/tệp, danh sách ứng dụng, tệp gần đây, menu nghỉ và khởi động lại.                                                                                                                                                                                                                                                                                    |
+| **File Explorer**            | Home dashboard, collections, danh sách/lưới, tìm kiếm, sắp xếp, thư mục mới, đổi tên, sao chép, yêu thích, kéo tệp vào thư mục, upload/download, Recycle Bin và khôi phục.                                                                                                                                                                                             |
+| **Notes**                    | Nhiều ghi chú, Markdown preview an toàn, toolbar, tìm kiếm nội dung, tên ghi chú, đếm từ, export và tự lưu.                                                                                                                                                                                                                                                            |
+| **Browser**                  | Tab, lịch sử, thanh địa chỉ, tìm kiếm DuckDuckGo, bookmark, iframe và nút mở trang ngoài.                                                                                                                                                                                                                                                                              |
+| **Music**                    | Ba soundscape ambient nguyên bản, âm thanh thật, play/pause, seek, next/previous, shuffle, repeat, favorites, queue và volume. Nhạc tiếp tục khi đóng hoặc thu nhỏ ứng dụng.                                                                                                                                                                                           |
+| **Photos**                   | Gallery, favorites, xem ảnh, chuyển ảnh, zoom, xoay, tải xuống và đặt hình nền.                                                                                                                                                                                                                                                                                        |
+| **Terminal**                 | **Shell thật** của máy chủ (PowerShell 7 / Windows PowerShell / cmd / Git Bash / WSL trên Windows; zsh / bash / fish trên macOS & Linux) qua PTY và xterm.js: chạy `npm i -g opencode-ai`, `opencode`, `vim`, `htop`, `git`… Nhiều tab, tìm kiếm, zoom, quick actions, 256 màu + truecolor, copy/paste, link bấm được. Kèm **Workspace shell** ảo an toàn như một tab. |
+| **Calculator**               | Phép toán chuẩn, phần trăm, bình phương, căn, nghịch đảo, bộ nhớ, lịch sử và bàn phím. Không dùng `eval`.                                                                                                                                                                                                                                                              |
+| **Calendar**                 | Chuyển tháng, chọn ngày, tạo/xóa lịch hẹn, chọn giờ và màu, lưu cục bộ.                                                                                                                                                                                                                                                                                                |
+| **Weather**                  | Tìm thành phố, thời tiết hiện tại và dự báo 7 ngày từ Open-Meteo, trạng thái offline rõ ràng.                                                                                                                                                                                                                                                                          |
+| **Focus**                    | Pomodoro 25/5/15 phút, play/pause/reset, danh sách việc cần làm, đếm phiên, nhạc nền và chế độ yên tĩnh.                                                                                                                                                                                                                                                               |
+| **Settings**                 | Ba hình nền, ảnh riêng, sáu accent, sáng/tối, transparency, reduced motion, cỡ icon, độ sáng workspace, tên người dùng, thông tin Node.js, backup/restore/reset.                                                                                                                                                                                                       |
+| **System panels**            | Quick Settings, lịch trên taskbar, notification center, toast và màn hình nghỉ.                                                                                                                                                                                                                                                                                        |
 
 Font, icon, hình nền và soundscape đều được phục vụ từ ứng dụng, không tải qua CDN khi sử dụng. Giao diện thích ứng theo kích thước **từng cửa sổ**, hỗ trợ cả điện thoại và máy tính.
 
@@ -72,39 +72,32 @@ Font, icon, hình nền và soundscape đều được phục vụ từ ứng d�
 
 Một số phím tắt có thể bị hệ điều hành/trình duyệt của bạn giữ lại. Luôn có nút tương ứng trên giao diện.
 
-### Thử terminal
+### Terminal: shell thật trên máy chủ
+
+Mở **Terminal** (Ctrl + Alt + T). Tab đầu tiên là **shell thật** của máy đang chạy Window React, gắn với một pseudo-terminal (PTY) nên mọi chương trình tương tác đều hoạt động như trong Windows Terminal hay iTerm:
 
 ```text
-help
-ls
-cd Documents
-mkdir "My project"
-cd "My project"
-echo "Hello, Window React!" > hello.txt
-cat hello.txt
-calc (12 + 8) * 3
-theme dark
-wallpaper dusk
-open music
-sysinfo
-```
-
-`rm` đưa tệp vào Recycle Bin. Các lệnh trên thao tác với hệ thống tệp ảo và **không chạm vào ổ đĩa thật**.
-
-### Chạy npm / npx từ terminal
-
-```text
-npm --version
 npm i -g opencode-ai
-npx cowsay "Hello, Window React!"
-npm view react version
+opencode
+node -v && npm -v
+git status
 ```
 
-- `npm` và `npx` là **hai lệnh duy nhất** được chuyển tới máy chủ Node.js. Server gọi thẳng `npm-cli.js` đi kèm Node.js bằng `child_process.spawn` **không qua shell**, nên các ký tự như `;`, `|`, `&&` hay `$(...)` chỉ là tham số bình thường của npm, không bao giờ được diễn giải.
-- Output được stream về theo thời gian thực (NDJSON), **Ctrl + C** hoặc nút **Stop** trên tab bar dừng cả cây tiến trình; đóng cửa sổ Terminal cũng dừng lệnh đang chạy. Mỗi lệnh tối đa **15 phút**, tối đa **2 lệnh** chạy đồng thời.
-- Lệnh chạy trong thư mục `npm-workspace/` (đã nằm trong `.gitignore`), đổi được bằng biến môi trường `WR_NPM_CWD`. `npm i -g` cài vào prefix toàn cục của Node.js trên máy chủ như bình thường; nếu prefix cần quyền ghi (ví dụ `/usr/local` trên Linux), hãy cấu hình `npm config set prefix ~/.npm-global` trước.
-- Tắt hoàn toàn tính năng này bằng `WR_NPM=off npm run dev` (hoặc `npm start`). Khi đó `/api/npm` trả về 403 và terminal báo rõ.
-- Endpoint yêu cầu header `X-Requested-With: WindowReact` (buộc trình duyệt thực hiện CORS preflight), nên website khác không thể gọi thay bạn. Đây vẫn là **quyền chạy npm trên máy chủ**: chỉ bật khi bạn tin tưởng những ai truy cập được cổng này, và không nên public ra Internet mà không có lớp xác thực phía trước.
+- **Windows:** tự nhận PowerShell 7 → Windows PowerShell → Command Prompt → Git Bash → WSL (chọn qua nút **▾** cạnh dấu **+**). Dùng ConPTY qua `node-pty` với binary dựng sẵn, **không cần Visual Studio Build Tools**. **macOS / Linux:** shell đăng nhập (`$SHELL`), rồi zsh / bash / fish / sh. Trên Linux, `node-pty` được biên dịch lúc `npm install` (cần `python3`, `make`, `g++`).
+- Shell mở tại thư mục home của người dùng chạy server (đổi bằng `WR_SHELL_CWD`). Quick actions → **Go to the project folder** để `cd` về thư mục Window React.
+- **Nhiều tab** (Ctrl + Shift + T mở, Ctrl + Shift + W đóng, Ctrl + Tab chuyển, bấm chuột giữa để đóng), **tìm kiếm** trong scrollback (Ctrl + Shift + F, hỗ trợ regex và phân biệt hoa thường), **zoom chữ** (Ctrl + = / Ctrl + - / Ctrl + 0), **Quick actions** gõ sẵn lệnh thường dùng, tiêu đề tab cập nhật theo tiêu đề shell, chấm vàng khi tab nền có bell.
+- **Copy / paste:** Ctrl + Shift + C / Ctrl + Shift + V; Ctrl + C khi đang bôi đen sẽ copy thay vì gửi SIGINT; Cmd + C / Cmd + V trên macOS; bấm giữ Ctrl + click để mở URL.
+- **Workspace shell** cũ (chỉ thao tác hệ thống tệp ảo, không chạm ổ đĩa) vẫn còn: **▾ → Workspace shell**. Các lệnh `ls`, `cd`, `cat`, `mkdir`, `echo >`, `rm` (đưa vào Recycle Bin), `open`, `calc`, `theme`, `wallpaper`, `sysinfo`, `neofetch`… hoạt động như trước.
+
+#### Bảo mật của shell
+
+Đây là **quyền truy cập shell đầy đủ vào máy chủ với quyền của người chạy `npm run dev`**. Window React bảo vệ nó như sau:
+
+- Kết nối WebSocket `/api/shell` chỉ chấp nhận **cùng origin** với trang (trình duyệt luôn gửi header `Origin`). Website khác không thể mở shell qua trình duyệt của bạn. Khi chạy sau reverse proxy có domain khác, khai báo `WR_SHELL_ORIGINS=https://desk.example.com` (phân tách bằng dấu phẩy).
+- **Token tùy chọn:** đặt `WR_SHELL_TOKEN=<chuỗi bí mật>` trên server; terminal sẽ hỏi token một lần và lưu trong trình duyệt (`wr:shell-token`). So sánh bằng `timingSafeEqual`. `/api/system` không tiết lộ danh sách shell hay thư mục khi token được bật.
+- Tối đa **8 shell** đồng thời; tiến trình shell **sống cùng kết nối** — đóng tab, đóng cửa sổ hay rớt mạng là shell bị kill cả cây. Heartbeat 30 giây phát hiện kết nối chết; back-pressure tạm dừng PTY khi trình duyệt không kịp nhận (ví dụ `yes`).
+- **Tắt hoàn toàn:** `WR_SHELL=off npm run dev` (hoặc `npm start`). Terminal vẫn dùng được với Workspace shell ảo.
+- Không nên public cổng này ra Internet nếu không có HTTPS + token + lớp xác thực phía trước (VPN, Tailscale, reverse proxy có đăng nhập).
 
 ## Dữ liệu & giới hạn minh bạch
 
@@ -116,7 +109,7 @@ npm view react version
 - Nhiều website chặn iframe qua CSP hoặc `X-Frame-Options`. Browser cung cấp nút mở trang trong tab thật; không cố vượt cơ chế bảo vệ của website.
 - Wi-Fi/Bluetooth/airplane chỉ là **trạng thái mô phỏng trong workspace**, không điều khiển phần cứng. Volume điều khiển nhạc của ứng dụng; brightness chỉ làm tối workspace.
 - Focus tiếp tục khi **thu nhỏ** nhưng dừng khi đóng cửa sổ hoặc tải lại trang. Màn hình nghỉ không phải khóa bảo mật.
-- Terminal có thể chạy `npm`/`npx` **thật trên máy chủ Node.js** (xem mục trên). Ngoài hai lệnh đó, không có lệnh hệ thống nào khác được thực thi. Có thể tắt bằng `WR_NPM=off`.
+- Terminal cung cấp **shell thật của máy chủ** (xem mục trên) — tắt bằng `WR_SHELL=off`, giới hạn origin, thêm `WR_SHELL_TOKEN` khi cần. Không có API nào khác thực thi lệnh hay đọc/ghi tệp tùy ý.
 - Đây là **web desktop độc lập**, không phải Windows thật, không chạy `.exe` và không liên kết với Microsoft.
 
 ## Cấu trúc
@@ -125,14 +118,14 @@ npm view react version
 window-react/
 ├── server/
 │   ├── index.js                # Express + Vite middleware, API, production static server
-│   └── npm.js                  # Chạy npm / npx thật, stream NDJSON, giới hạn & dọn tiến trình
+│   └── pty.js                  # Shell thật qua node-pty + WebSocket, origin/token, back-pressure
 ├── src/
-│   ├── apps/                   # 11 ứng dụng tách biệt
+│   ├── apps/                   # 11 ứng dụng tách biệt (Terminal = ShellView xterm.js + WorkspaceShell ảo)
 │   ├── components/             # Desktop, Window, StartMenu, system panels, UI dùng chung
 │   ├── context/
 │   │   ├── WorkspaceContext.tsx # Cửa sổ, tệp, sở thích, lịch, thông báo, thời tiết
 │   │   └── MusicContext.tsx     # Trình phát liên tục, volume, queue/favorites
-│   ├── lib/                    # Kiểu dữ liệu, dữ liệu mẫu, filesystem, parser số học, client npm
+│   ├── lib/                    # Kiểu dữ liệu, dữ liệu mẫu, filesystem, parser số học, client shell
 │   ├── styles/                 # Design tokens, shell, ứng dụng & container queries
 │   └── main.tsx
 ├── public/
@@ -156,12 +149,12 @@ window-react/
 GET  /api/health
 GET  /api/system
 GET  /api/weather?city=Da%20Nang
-POST /api/npm            { "command": "npm" | "npx", "args": ["i", "-g", "opencode-ai"] }
+WS   /api/shell          { type: "start", cols, rows, shell?, token? } → ready · output · exit · error
 ```
 
-Weather chỉ gọi các domain cố định của Open-Meteo, có timeout và cache 10 phút. `/api/system` mô tả **máy chủ Node.js** (kèm trạng thái bật/tắt npm), không giả làm thông tin thiết bị của người dùng.
+Weather chỉ gọi các domain cố định của Open-Meteo, có timeout và cache 10 phút. `/api/system` mô tả **máy chủ Node.js** (kèm trạng thái shell), không giả làm thông tin thiết bị của người dùng.
 
-`/api/npm` là endpoint duy nhất thực thi tiến trình: chỉ nhận `npm`/`npx`, tối đa 40 tham số không chứa ký tự điều khiển, yêu cầu header `X-Requested-With: WindowReact`, trả về stream `application/x-ndjson` với các sự kiện `start` · `stdout` · `stderr` · `exit` · `error`. Ngắt kết nối là dừng tiến trình. Không có API đọc/ghi tệp tùy ý trên máy chủ.
+`/api/shell` là WebSocket duy nhất thực thi tiến trình: một PTY cho mỗi kết nối, chỉ nhận cùng origin (hoặc `WR_SHELL_ORIGINS`), token tùy chọn, tối đa 8 phiên, kích thước lưới bị giới hạn 500×300. Client gửi `input` / `resize`; server trả `output` từng đoạn. Đóng kết nối là kết thúc shell. Không có API đọc/ghi tệp tùy ý ngoài shell này.
 
 ## Kiểm thử
 
@@ -178,7 +171,7 @@ npm run format           # Prettier
 npm run format:check
 ```
 
-Trong môi trường đã có Chromium, có thể đặt `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` cho Playwright. Bộ kiểm thử mô phỏng dịch vụ thời tiết để không phụ thuộc mạng ngoài; âm thanh, download, filesystem và API Node được kiểm tra thật.
+Trong môi trường đã có Chromium, có thể đặt `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` cho Playwright. Bài kiểm thử terminal cần `node-pty` hoạt động (trên Linux CI cần `python3`, `make`, `g++`; Ubuntu runner có sẵn). Bộ kiểm thử mô phỏng dịch vụ thời tiết để không phụ thuộc mạng ngoài; âm thanh, download, filesystem và API Node được kiểm tra thật.
 
 ### Tái tạo soundscape (không bắt buộc)
 

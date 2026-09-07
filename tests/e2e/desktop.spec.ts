@@ -118,8 +118,39 @@ test('notes really edit, preview and survive reloads', async ({ page }) => {
   );
 });
 
-test('terminal manipulates virtual files and safely calculates', async ({ page }) => {
+test('terminal opens a real shell on the Node.js host and runs npm', async ({ page }) => {
   await openApp(page, 'Terminal');
+  const terminal = page.getByRole('region', { name: 'Terminal window', exact: true });
+  const status = terminal.locator('.terminal-status-state');
+  await expect(status).toContainText(/Real .* on/, { timeout: 30_000 });
+  const screen = terminal.locator('.xterm-screen');
+  await expect(screen).toBeVisible();
+  // Keystrokes go to a real PTY; the shell echoes them and runs the command.
+  await terminal.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('echo wr-$((6*7)) && npm --version');
+  await page.keyboard.press('Enter');
+  await expect(screen).toContainText('wr-42', { timeout: 15_000 });
+  await expect(screen).toContainText(/\d+\.\d+\.\d+/, { timeout: 60_000 });
+  // Find bar searches the scrollback.
+  await terminal.getByRole('button', { name: 'Find in terminal' }).click();
+  await terminal.getByRole('textbox', { name: 'Find in terminal' }).fill('wr-42');
+  await expect(terminal.locator('.shell-search-count')).toContainText(/1 of/);
+  await page.keyboard.press('Escape');
+  // Exiting the shell is reported, and Enter starts a fresh one.
+  await terminal.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('exit 3');
+  await page.keyboard.press('Enter');
+  await expect(status).toContainText('exited with code 3', { timeout: 15_000 });
+  await page.keyboard.press('Enter');
+  await expect(status).toContainText(/Real .* on/, { timeout: 30_000 });
+});
+
+test('terminal keeps the safe workspace shell as a tab', async ({ page }) => {
+  await openApp(page, 'Terminal');
+  const terminal = page.getByRole('region', { name: 'Terminal window', exact: true });
+  await terminal.getByRole('button', { name: 'Choose a shell' }).click();
+  await terminal.getByRole('menuitem', { name: /Workspace shell/ }).click();
+  await expect(terminal.getByRole('tab')).toHaveCount(2);
   const command = page.getByRole('textbox', { name: 'Terminal command' });
   await command.fill('mkdir "Terminal ideas"');
   await command.press('Enter');
@@ -137,37 +168,18 @@ test('terminal manipulates virtual files and safely calculates', async ({ page }
   await command.fill('calc process.exit()');
   await command.press('Enter');
   await expect(page.locator('.terminal-line.error').last()).toHaveText('Invalid expression');
-  await command.fill('sysinfo');
-  await command.press('Enter');
-  await expect(page.locator('.terminal-line.output').last()).toContainText('Node.js');
-});
-
-test('terminal runs real npm on the Node.js host and streams its output', async ({ page }) => {
-  await openApp(page, 'Terminal');
-  const command = page.getByRole('textbox', { name: 'Terminal command' });
-  await command.fill('npm --version');
-  await command.press('Enter');
-  await expect(page.locator('.terminal-line.output').last()).toHaveText(/^\d+\.\d+\.\d+$/);
-  await expect(page.locator('.terminal-line.muted').last()).toContainText('Done in');
-  // Works without the registry, so the suite stays offline-friendly like the weather mock.
-  await command.fill('npm config get registry');
-  await command.press('Enter');
-  await expect(page.locator('.terminal-line.output').last()).toHaveText(/^https?:\/\//, {
-    timeout: 60_000,
-  });
-  // Only npm and npx reach the host; anything else stays a workspace command.
+  // Host commands are not interpreted by the virtual shell.
   await command.fill('node -e "process.exit(1)"');
   await command.press('Enter');
   await expect(page.locator('.terminal-line.error').last()).toContainText(
     'not a workspace command',
   );
-  // A failing npm command reports its exit code instead of hanging.
-  await command.fill('npm run this-script-does-not-exist');
+  await command.fill('sysinfo');
   await command.press('Enter');
-  await expect(page.locator('.terminal-line.error').last()).toContainText('exited with code 1', {
-    timeout: 60_000,
-  });
-  await expect(command).toBeEditable();
+  await expect(page.locator('.terminal-line.output').last()).toContainText('Node.js');
+  // Closing the tab returns to the real shell.
+  await terminal.getByRole('tab', { name: 'Workspace shell' }).getByRole('button').click();
+  await expect(terminal.getByRole('tab')).toHaveCount(1);
 });
 
 test('personalization changes theme, wallpaper and profile persistently', async ({ page }) => {

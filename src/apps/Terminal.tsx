@@ -1,434 +1,528 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowUpRight,
+  Check,
   ChevronDown,
+  Circle,
+  Copy,
+  Eraser,
+  KeyRound,
   Loader2,
-  Package,
+  Minus,
+  Plus,
+  RotateCcw,
+  Search,
   ShieldCheck,
-  Square,
+  Sparkles,
+  SquareTerminal,
   TerminalSquare,
+  X,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { WindowLogo } from '../components/AppIcon';
-import { APPS, WALLPAPERS } from '../lib/data';
-import { calculate } from '../lib/calculator';
-import { NPM_COMMANDS, parseCommand, runNpm } from '../lib/npm';
-import { formatBytes } from '../lib/utils';
-import type { AppId } from '../lib/types';
+import type { ShellTheme } from './ShellView';
+import { WorkspaceShell } from './WorkspaceShell';
+import { TOKEN_KEY } from '../lib/shell';
+import type { ShellChoice, ShellInfo, ShellState } from '../lib/shell';
+import type { ShellApi } from './WorkspaceShell';
+import { safeRead } from '../lib/utils';
+import '@fontsource-variable/jetbrains-mono';
 
-interface Output {
+interface Tab {
   id: number;
-  type: 'input' | 'output' | 'error' | 'muted';
-  text: string;
-  path?: string;
-  /** Streamed process output that stopped mid-line; the next chunk of the same stream extends it. */
-  open?: boolean;
+  kind: 'shell' | 'workspace';
+  /** Requested shell id; stays fixed for the life of the tab so the session is never restarted. */
+  shell?: string;
+  /** Shell id the server actually started (e.g. the default when none was requested). */
+  resolvedShell?: string;
+  title: string;
+  state: ShellState;
+  detail?: string;
+  generation: number;
+  bell?: boolean;
 }
-const COMMANDS = [
-  'help',
-  'ls',
-  'cd',
-  'pwd',
-  'cat',
-  'mkdir',
-  'touch',
-  'echo',
-  'rm',
-  'open',
-  'calc',
-  'theme',
-  'wallpaper',
-  'sysinfo',
-  'neofetch',
-  'date',
-  'whoami',
-  'history',
-  'clear',
-  ...NPM_COMMANDS,
+interface ShellStatus {
+  enabled: boolean;
+  reason?: string | null;
+  code?: string | null;
+  cwd?: string;
+  shells?: ShellChoice[];
+  protected?: boolean;
+}
+const FONT_KEY = 'wr:terminal-font';
+const SHELL_KEY = 'wr:terminal-shell';
+const MIN_FONT = 9;
+const MAX_FONT = 22;
+interface QuickAction {
+  label: string;
+  hint: string;
+  command: (info: ShellInfo | null) => string;
+}
+// Typed into the active shell as if the user had, so they work in PowerShell, cmd and bash alike.
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    label: 'Install opencode',
+    hint: 'npm i -g opencode-ai',
+    command: () => 'npm i -g opencode-ai\r',
+  },
+  { label: 'Run opencode', hint: 'AI coding agent, right here', command: () => 'opencode\r' },
+  {
+    label: 'Go to the project folder',
+    hint: 'cd <window-react>',
+    command: (info) => (info?.root ? `cd "${info.root}"\r` : 'cd\r'),
+  },
+  { label: 'Node & npm versions', hint: 'node -v && npm -v', command: () => 'node -v && npm -v\r' },
+  { label: 'Git status', hint: 'git status', command: () => 'git status\r' },
+  {
+    label: 'List files',
+    hint: 'ls / dir',
+    command: (info) => (info?.platform === 'win32' && info.shell === 'cmd' ? 'dir\r' : 'ls\r'),
+  },
 ];
+// xterm.js and its addons are only needed by the real shell, so they load on first use.
+const ShellView = lazy(() => import('./ShellView').then((m) => ({ default: m.ShellView })));
+let nextTab = 1;
+function makeTab(kind: Tab['kind'], shell?: string, title?: string): Tab {
+  return {
+    id: nextTab++,
+    kind,
+    shell,
+    title: title || (kind === 'workspace' ? 'Workspace shell' : 'Shell'),
+    state: kind === 'workspace' ? 'running' : 'connecting',
+    generation: 0,
+  };
+}
 export function Terminal() {
-  const { files, createFile, updateFile, trashFile, openApp, prefs, updatePrefs } = useWorkspace();
-  const [lines, setLines] = useState<Output[]>([]);
-  const [command, setCommand] = useState('');
-  const [cwd, setCwd] = useState('root');
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [busy, setBusy] = useState(false);
-  const [running, setRunning] = useState<string | null>(null);
-  const scroll = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const counter = useRef(0);
-  const abort = useRef<AbortController | null>(null);
+  const { prefs, notify, activeApp } = useWorkspace();
+  const [status, setStatus] = useState<ShellStatus | null>(null);
+  const [statusTick, setStatusTick] = useState(0);
+  const [tabs, setTabs] = useState<Tab[]>(() => [makeTab('shell', safeRead(SHELL_KEY, ''))]);
+  const [active, setActive] = useState<number>(() => tabs[0].id);
+  const [fontSize, setFontSize] = useState<number>(() =>
+    Math.min(MAX_FONT, Math.max(MIN_FONT, safeRead(FONT_KEY, 13))),
+  );
+  const [menu, setMenu] = useState<'new' | 'actions' | null>(null);
+  const [search, setSearch] = useState(false);
+  const [token, setToken] = useState<string>(() => safeRead(TOKEN_KEY, ''));
+  const [askToken, setAskToken] = useState(false);
+  const [info, setInfo] = useState<ShellInfo | null>(null);
+  const shellRefs = useRef(new Map<number, ShellApi>());
+  const menuRef = useRef<HTMLDivElement>(null);
+  const activeTab = tabs.find((t) => t.id === active) || tabs[0];
   useEffect(() => {
-    scroll.current?.scrollTo(0, scroll.current.scrollHeight);
-  }, [lines, busy]);
-  // Closing the window stops a running npm process on the server too.
-  useEffect(() => () => abort.current?.abort(), []);
-  function stopProcess() {
-    abort.current?.abort();
+    const controller = new AbortController();
+    fetch('/api/system', { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then((system) =>
+        setStatus(system.shell ?? { enabled: false, reason: 'Node.js is unavailable.' }),
+      )
+      .catch((e) => {
+        if (e.name !== 'AbortError')
+          setStatus({ enabled: false, reason: 'Node.js is unavailable.' });
+      });
+    return () => controller.abort();
+  }, [statusTick]);
+  useEffect(() => localStorage.setItem(FONT_KEY, JSON.stringify(fontSize)), [fontSize]);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(null);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [menu]);
+  const theme = useMemo<ShellTheme>(
+    () => ({
+      background: '#172a24',
+      foreground: '#d8e3d2',
+      cursor: '#c9deb5',
+      selection: 'rgba(151, 186, 126, 0.32)',
+      accent: prefs.accent,
+    }),
+    [prefs.accent],
+  );
+  const patchTab = useCallback((id: number, patch: Partial<Tab> | ((tab: Tab) => Partial<Tab>)) => {
+    setTabs((items) =>
+      items.map((tab) =>
+        tab.id === id ? { ...tab, ...(typeof patch === 'function' ? patch(tab) : patch) } : tab,
+      ),
+    );
+  }, []);
+  function openTab(kind: Tab['kind'], shell?: string) {
+    const tab = makeTab(kind, shell, status?.shells?.find((s) => s.id === shell)?.name);
+    if (kind === 'shell') localStorage.setItem(SHELL_KEY, JSON.stringify(shell || ''));
+    setTabs((items) => [...items, tab]);
+    setActive(tab.id);
+    setMenu(null);
+    setSearch(false);
   }
-  function pathString(id: string): string {
-    if (id === 'root') return '~';
-    const file = files.find((f) => f.id === id && !f.trashed);
-    return file ? `${pathString(file.parentId)}/${file.name}` : '~';
-  }
-  function resolve(path: string) {
-    if (!path || path === '~' || path === '/') return 'root';
-    let current = path.startsWith('/') || path.startsWith('~') ? 'root' : cwd;
-    for (const part of path.replace(/^~\/?/, '').split('/').filter(Boolean)) {
-      if (part === '.') continue;
-      if (part === '..') {
-        current = files.find((f) => f.id === current)?.parentId || 'root';
-        continue;
+  function closeTab(id: number) {
+    setTabs((items) => {
+      const index = items.findIndex((t) => t.id === id);
+      const next = items.filter((t) => t.id !== id);
+      if (!next.length) {
+        const fresh = makeTab('shell', safeRead(SHELL_KEY, ''));
+        setActive(fresh.id);
+        return [fresh];
       }
-      const item = files.find(
-        (f) => f.parentId === current && !f.trashed && f.name.toLowerCase() === part.toLowerCase(),
-      );
-      if (!item) return null;
-      current = item.id;
-    }
-    return current;
-  }
-  function append(text: string, type: Output['type'] = 'output') {
-    setLines((items) => [...items.slice(-300), { id: ++counter.current, type, text }]);
-  }
-  // Process output arrives in chunks; keep extending the last streamed line instead of adding
-  // a new block per chunk, and split on newlines so long installs stay readable.
-  function stream(text: string, type: 'output' | 'error') {
-    if (!text) return;
-    setLines((items) => {
-      const next = [...items];
-      const pieces = text.split(/\r?\n/);
-      const complete = text.endsWith('\n');
-      if (complete) pieces.pop(); // the empty piece after the final newline
-      const last = next[next.length - 1];
-      if (last?.open && last.type === type)
-        next[next.length - 1] = { ...last, text: last.text + (pieces.shift() ?? ''), open: false };
-      for (const piece of pieces) next.push({ id: ++counter.current, type, text: piece });
-      // A chunk may stop mid-line; keep that line open so the next chunk continues it.
-      if (!complete) next[next.length - 1] = { ...next[next.length - 1], open: true };
-      return next.slice(-600);
+      if (id === active) setActive(next[Math.max(0, index - 1)].id);
+      return next;
     });
+    shellRefs.current.delete(id);
   }
-  async function execute() {
-    const raw = command.trim();
-    if (!raw || busy) return;
-    setLines((items) => [
-      ...items,
-      { id: ++counter.current, type: 'input', text: raw, path: pathString(cwd) },
-    ]);
-    setHistory((items) => [...items, raw]);
-    setHistoryIndex(-1);
-    setCommand('');
-    const parsed = parseCommand(raw);
-    const parts = [...parsed.args];
-    const cmd = parsed.command.toLowerCase();
-    const argument = parts.join(' ');
-    try {
-      switch (cmd) {
-        case 'help':
-          append(
-            'A FEW THINGS YOU CAN DO\n\n  help                 A little guidance\n  ls [folder]          See what’s here\n  cd <folder>          Go somewhere\n  pwd                  Know where you are\n  cat <file>           Read a little something\n  mkdir <name>         Make some room\n  touch <name>         A fresh, empty file\n  echo <text>          Say something (or > file.txt)\n  rm <file>            Move to Recycle Bin\n  open <app>           Open an app\n  calc <expression>    A little arithmetic\n  theme light|dark     Set the mood\n  wallpaper <name>     serenity · dusk · bloom\n  sysinfo              Check in with Node.js\n  neofetch             Meet your workspace\n  date · whoami        Here and now\n  history · clear      Look back. Or start fresh.\n\nNODE.JS PACKAGES\n\n  npm <args>           Real npm on the Node.js host, e.g. npm i -g opencode-ai\n  npx <args>           Run a package binary, e.g. npx cowsay hello\n  Ctrl + C             Stop the running command\n\nTip: use quotes around file names with spaces. ↑ ↓ for history.',
-          );
-          break;
-        case 'npm':
-        case 'npx': {
-          if (!parts.length)
-            throw new Error(`Usage: ${cmd} <arguments>. Try “${cmd} --version” or “npm help”.`);
-          setBusy(true);
-          const controller = new AbortController();
-          abort.current = controller;
-          setRunning([cmd, ...parts].join(' '));
-          try {
-            const result = await runNpm(cmd, parts, {
-              signal: controller.signal,
-              onStart: (info) => append(`$ ${info.command}\nin ${info.cwd}`, 'muted'),
-              onOutput: stream,
-            });
-            if (result.code === 0)
-              append(`✓ Done in ${(result.duration / 1000).toFixed(1)}s`, 'muted');
-            else if (result.signal) append(`Stopped (${result.signal}).`, 'error');
-            else throw new Error(`${cmd} exited with code ${result.code}.`);
-          } finally {
-            abort.current = null;
-            setRunning(null);
-          }
-          break;
-        }
-        case 'clear':
-          setLines([]);
-          break;
-        case 'pwd':
-          append(pathString(cwd).replace('~', '/workspace'));
-          break;
-        case 'ls': {
-          const id = argument ? resolve(argument) : cwd;
-          if (!id) throw new Error(`No such folder: ${argument}`);
-          const children = files.filter((f) => f.parentId === id && !f.trashed);
-          append(
-            children.length
-              ? children
-                  .map(
-                    (f) =>
-                      `${f.kind === 'folder' ? 'dir ' : 'file'}  ${f.name.padEnd(38)} ${f.kind === 'folder' ? '—' : formatBytes(f.size)}`,
-                  )
-                  .join('\n')
-              : 'Nothing here yet. A little room for possibility.',
-          );
-          break;
-        }
-        case 'cd': {
-          const id = resolve(argument);
-          if (!id || (id !== 'root' && files.find((f) => f.id === id)?.kind !== 'folder'))
-            throw new Error(`No such folder: ${argument}`);
-          setCwd(id);
-          break;
-        }
-        case 'cat': {
-          const item = files.find((f) => f.id === resolve(argument));
-          if (!item || !['text', 'code'].includes(item.kind))
-            throw new Error('Choose an existing text or code file.');
-          append(item.content || '(empty file)');
-          break;
-        }
-        case 'mkdir':
-        case 'touch': {
-          if (!argument) throw new Error(`Usage: ${cmd} <name>`);
-          const id = createFile(argument, cmd === 'mkdir' ? 'folder' : 'text', cwd);
-          if (!id) throw new Error('Could not create this item. Check the name.');
-          append(`Created ${argument}`);
-          break;
-        }
-        case 'rm': {
-          const id = resolve(argument);
-          if (!argument || !id || id === 'root')
-            throw new Error('Choose an existing file or folder.');
-          if (['documents', 'pictures', 'music-folder', 'downloads'].includes(id))
-            throw new Error('Default collection folders are protected.');
-          trashFile(id);
-          if (id === cwd) setCwd('root');
-          append('Moved to Recycle Bin. Restore it in File Explorer.');
-          break;
-        }
-        case 'echo': {
-          const redirect = parts.indexOf('>');
-          if (redirect >= 0) {
-            const text = parts.slice(0, redirect).join(' ');
-            const name = parts.slice(redirect + 1).join(' ');
-            if (!name) throw new Error('Add a file name after >');
-            const existing = files.find((f) => f.id === resolve(name));
-            if (existing) {
-              if (!['text', 'code'].includes(existing.kind))
-                throw new Error('Only text files can be edited.');
-              updateFile(existing.id, { content: text });
-            } else if (!createFile(name, 'text', cwd, text)) throw new Error('Invalid file name.');
-            append(`Saved to ${name}`);
-          } else append(argument);
-          break;
-        }
-        case 'open': {
-          const app = APPS.find(
-            (a) =>
-              a.id === argument.toLowerCase() || a.name.toLowerCase() === argument.toLowerCase(),
-          );
-          if (app) {
-            openApp(app.id as AppId);
-            append(`Opening ${app.name}…`);
-          } else {
-            const file = files.find((f) => f.id === resolve(argument));
-            if (file) {
-              if (file.kind === 'folder') openApp('explorer', file.id);
-              else
-                openApp(
-                  file.kind === 'image' ? 'photos' : file.kind === 'audio' ? 'music' : 'notes',
-                  file.id,
-                );
-            } else throw new Error(`Try: ${APPS.map((a) => a.id).join(', ')}`);
-          }
-          break;
-        }
-        case 'calc':
-          append(`${calculate(argument)}`);
-          break;
-        case 'date':
-          append(new Date().toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' }));
-          break;
-        case 'whoami':
-          append(`${prefs.name}\nA curious human, making a little space.`);
-          break;
-        case 'history':
-          append([...history, raw].map((h, i) => `${String(i + 1).padStart(3)}  ${h}`).join('\n'));
-          break;
-        case 'theme':
-          if (!['light', 'dark'].includes(argument)) throw new Error('Usage: theme light | dark');
-          updatePrefs({ theme: argument as 'light' | 'dark' });
-          append(`A ${argument === 'dark' ? 'quieter' : 'brighter'} perspective.`);
-          break;
-        case 'wallpaper': {
-          const wallpaper = WALLPAPERS.find((w) => w.id === argument);
-          if (!wallpaper) throw new Error('Choose serenity, dusk, or bloom.');
-          updatePrefs({ wallpaper: wallpaper.url });
-          append(`Set the scene: ${wallpaper.name}.`);
-          break;
-        }
-        case 'neofetch':
-          append(
-            `  ▦  WINDOW REACT\n\n  OS        Window React 1.0\n  Host      Your browser\n  Shell     Workspace Shell\n  Stack     React + TypeScript + Node.js\n  Theme     ${prefs.theme}\n  Files     ${files.filter((f) => !f.trashed).length}\n  Storage   Local-first, always\n\n  Thoughtfully made. Open by nature.`,
-          );
-          break;
-        case 'sysinfo': {
-          setBusy(true);
-          const res = await fetch('/api/system');
-          if (!res.ok) throw new Error('Node.js is unavailable.');
-          const info = await res.json();
-          append(
-            `NODE.JS SERVER\n\n  Runtime     ${info.runtime}\n  Platform    ${info.platform} / ${info.architecture}\n  Memory      ${formatBytes(info.memory.used)} (process)\n  CPUs        ${info.cpus}\n  Uptime      ${info.uptime}s\n  Mode        ${info.mode}\n  npm         ${info.npm?.enabled ? `enabled · ${info.npm.cwd}` : 'disabled'}\n\nThis describes the Node.js host, not your physical device.`,
-          );
-          break;
-        }
-        default:
-          throw new Error(`“${cmd}” is not a workspace command. Type help to see what’s possible.`);
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') append('^C', 'muted');
-      else
-        append(error instanceof Error ? error.message : 'Something didn’t go as planned.', 'error');
-    } finally {
-      setBusy(false);
-      requestAnimationFrame(() => input.current?.focus());
+  function restart(id: number) {
+    patchTab(id, (tab) => ({
+      generation: tab.generation + 1,
+      state: 'connecting',
+      detail: undefined,
+    }));
+  }
+  function runQuickAction(action: QuickAction) {
+    setMenu(null);
+    if (activeTab.kind !== 'shell' || activeTab.state !== 'running') {
+      notify('Open a shell first', 'Quick actions type into a running shell tab.', 'terminal');
+      return;
     }
+    shellRefs.current.get(activeTab.id)?.paste(action.command(info));
   }
+  function copySelection() {
+    const text = window.getSelection()?.toString();
+    if (text) void navigator.clipboard?.writeText(text);
+  }
+  // Ctrl+Shift+T new tab, Ctrl+Shift+W close tab, Ctrl+Tab cycle, Ctrl+= / Ctrl+- zoom.
+  useEffect(() => {
+    if (activeApp !== 'terminal') return;
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (e.ctrlKey && e.shiftKey && key === 't') {
+        e.preventDefault();
+        openTab('shell', safeRead(SHELL_KEY, ''));
+      } else if (e.ctrlKey && e.shiftKey && key === 'w') {
+        e.preventDefault();
+        closeTab(active);
+      } else if (e.ctrlKey && key === 'tab') {
+        e.preventDefault();
+        const index = tabs.findIndex((t) => t.id === active);
+        const next = tabs[(index + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length];
+        if (next) setActive(next.id);
+      } else if ((e.ctrlKey || e.metaKey) && (key === '=' || key === '+')) {
+        e.preventDefault();
+        setFontSize((size) => Math.min(MAX_FONT, size + 1));
+      } else if ((e.ctrlKey || e.metaKey) && key === '-') {
+        e.preventDefault();
+        setFontSize((size) => Math.max(MIN_FONT, size - 1));
+      } else if ((e.ctrlKey || e.metaKey) && key === '0' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setFontSize(13);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+  const shellAvailable = status?.enabled !== false;
+  const stateLabel =
+    activeTab.kind === 'workspace'
+      ? 'Virtual workspace shell — safe, in-browser'
+      : activeTab.state === 'connecting'
+        ? 'Connecting to the Node.js host…'
+        : activeTab.state === 'running'
+          ? `Real ${info?.shellName || 'shell'} on ${info?.host || 'the Node.js host'} · pid ${info?.pid ?? '—'} · ${info?.cwd || ''}`
+          : activeTab.state === 'exited'
+            ? `Shell exited${activeTab.detail && activeTab.detail !== '0' ? ` with code ${activeTab.detail}` : ''} · press Enter to start a new one`
+            : activeTab.detail || 'Shell unavailable';
   return (
-    <div className="terminal-app">
-      <div className="terminal-tabbar">
-        <span>
-          <TerminalSquare size={14} />
-          Workspace shell
-          <ChevronDown size={12} />
-        </span>
-        {running ? (
-          <button className="terminal-stop" onClick={stopProcess} aria-label="Stop running command">
-            <Loader2 size={11} className="spinning" />
-            <span className="terminal-running" title={running}>
-              {running}
-            </span>
-            <Square size={9} fill="currentColor" /> Stop
-          </button>
-        ) : (
-          <button
-            onClick={() => {
-              setCommand('help');
-              input.current?.focus();
-            }}
-          >
-            A little guidance <ArrowUpRight size={12} />
-          </button>
-        )}
-      </div>
-      <div
-        className="terminal-scroll"
-        ref={scroll}
-        onClick={() => {
-          if (!window.getSelection()?.toString()) input.current?.focus();
-        }}
-      >
-        <div className="terminal-welcome">
-          <WindowLogo size={49} />
-          <div>
-            <h2>A window of possibility.</h2>
-            <p>
-              Window React Terminal <span>v1.0.0</span>
-            </p>
+    <div
+      className="terminal-app terminal-pro"
+      data-state={activeTab.kind === 'shell' ? activeTab.state : 'workspace'}
+    >
+      <div className="terminal-tabbar" ref={menuRef}>
+        <div className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              role="tab"
+              tabIndex={0}
+              aria-selected={tab.id === active}
+              className={`terminal-tab ${tab.id === active ? 'is-active' : ''} ${tab.bell ? 'has-bell' : ''}`}
+              onClick={() => {
+                setActive(tab.id);
+                setSearch(false);
+                patchTab(tab.id, { bell: false });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActive(tab.id);
+                }
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) closeTab(tab.id);
+              }}
+              title={tab.title}
+            >
+              {tab.kind === 'workspace' ? (
+                <ShieldCheck size={12} />
+              ) : tab.state === 'connecting' ? (
+                <Loader2 size={12} className="spinning" />
+              ) : tab.state === 'running' ? (
+                <SquareTerminal size={12} />
+              ) : (
+                <Circle size={10} />
+              )}
+              <span>{tab.title}</span>
+              <button
+                aria-label={`Close ${tab.title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(tab.id);
+                }}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+          <div className="terminal-newtab">
+            <button
+              aria-label="New shell tab"
+              title="New tab (Ctrl + Shift + T)"
+              onClick={() => openTab('shell', safeRead(SHELL_KEY, ''))}
+            >
+              <Plus size={13} />
+            </button>
+            <button
+              aria-label="Choose a shell"
+              aria-expanded={menu === 'new'}
+              onClick={() => setMenu(menu === 'new' ? null : 'new')}
+            >
+              <ChevronDown size={12} />
+            </button>
+            {menu === 'new' && (
+              <div className="terminal-menu" role="menu">
+                <span className="terminal-menu-heading">Open a new tab</span>
+                {(status?.shells || []).map((shell) => (
+                  <button key={shell.id} role="menuitem" onClick={() => openTab('shell', shell.id)}>
+                    <SquareTerminal size={13} />
+                    {shell.name}
+                    {(activeTab.resolvedShell || activeTab.shell || status?.shells?.[0]?.id) ===
+                      shell.id && <Check size={12} />}
+                  </button>
+                ))}
+                {!status?.shells?.length && (
+                  <button role="menuitem" onClick={() => openTab('shell')}>
+                    <SquareTerminal size={13} />
+                    Default shell
+                  </button>
+                )}
+                <button role="menuitem" onClick={() => openTab('workspace')}>
+                  <ShieldCheck size={13} />
+                  Workspace shell (virtual files)
+                </button>
+              </div>
+            )}
           </div>
         </div>
-        <p className="terminal-hint">
-          Your space, one command away. Type <strong>help</strong> to get started.
-        </p>
-        {lines.map((line) => (
-          <div key={line.id} className={`terminal-line ${line.type}`}>
-            {line.type === 'input' && (
-              <span className="terminal-prompt">
-                {line.path} <b>❯</b>{' '}
-              </span>
-            )}
-            <span>{line.text}</span>
-          </div>
-        ))}
-        <form
-          className="terminal-input-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void execute();
-          }}
-        >
-          <span className="terminal-prompt">
-            {pathString(cwd)} <b>❯</b>
+        <div className="terminal-tools">
+          <button
+            className="terminal-actions-button"
+            aria-expanded={menu === 'actions'}
+            onClick={() => setMenu(menu === 'actions' ? null : 'actions')}
+          >
+            <Sparkles size={12} /> Quick actions <ChevronDown size={11} />
+          </button>
+          {menu === 'actions' && (
+            <div className="terminal-menu terminal-menu-right" role="menu">
+              <span className="terminal-menu-heading">Type into the active shell</span>
+              {QUICK_ACTIONS.map((action) => (
+                <button key={action.label} role="menuitem" onClick={() => runQuickAction(action)}>
+                  <span>
+                    {action.label}
+                    <small>{action.hint}</small>
+                  </span>
+                </button>
+              ))}
+              <span className="terminal-menu-heading">This tab</span>
+              <button role="menuitem" onClick={copySelection}>
+                <Copy size={13} /> Copy selection
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  shellRefs.current.get(activeTab.id)?.clear();
+                }}
+              >
+                <Eraser size={13} /> Clear screen
+              </button>
+              {activeTab.kind === 'shell' && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(null);
+                    restart(activeTab.id);
+                  }}
+                >
+                  <RotateCcw size={13} /> Restart shell
+                </button>
+              )}
+              {status?.protected && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(null);
+                    setAskToken(true);
+                  }}
+                >
+                  <KeyRound size={13} /> Access token…
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab.kind === 'shell' && (
+            <button
+              aria-label="Find in terminal"
+              aria-pressed={search}
+              title="Find (Ctrl + Shift + F)"
+              onClick={() => setSearch((v) => !v)}
+            >
+              <Search size={13} />
+            </button>
+          )}
+          <span className="terminal-zoom" aria-label="Text size">
+            <button
+              aria-label="Smaller text"
+              onClick={() => setFontSize((s) => Math.max(MIN_FONT, s - 1))}
+            >
+              <Minus size={11} />
+            </button>
+            <b>{fontSize}</b>
+            <button
+              aria-label="Larger text"
+              onClick={() => setFontSize((s) => Math.min(MAX_FONT, s + 1))}
+            >
+              <Plus size={11} />
+            </button>
           </span>
-          <input
-            ref={input}
-            value={command}
-            readOnly={busy}
-            aria-label="Terminal command"
-            placeholder={running ? 'Running… press Ctrl + C to stop' : busy ? 'One moment…' : ''}
-            onChange={(e) => setCommand(e.target.value)}
-            autoCapitalize="off"
-            autoComplete="off"
-            spellCheck={false}
-            onKeyDown={(e) => {
-              if (busy) {
-                if (e.ctrlKey && e.key === 'c' && running) {
-                  e.preventDefault();
-                  stopProcess();
-                }
-                return;
+        </div>
+      </div>
+      <div className="terminal-body">
+        {tabs.map((tab) =>
+          tab.kind === 'workspace' ? (
+            <div key={tab.id} className="terminal-pane" hidden={tab.id !== active}>
+              <WorkspaceShell
+                visible={tab.id === active}
+                register={(api) => shellRefs.current.set(tab.id, api)}
+              />
+            </div>
+          ) : (
+            <Suspense
+              key={tab.id}
+              fallback={
+                <div className="terminal-loading" hidden={tab.id !== active}>
+                  <Loader2 size={14} className="spinning" /> Loading terminal…
+                </div>
               }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                const index = historyIndex < 0 ? history.length - 1 : Math.max(0, historyIndex - 1);
-                setHistoryIndex(index);
-                setCommand(history[index] || '');
-              }
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                const index = historyIndex + 1;
-                if (index >= history.length) {
-                  setHistoryIndex(-1);
-                  setCommand('');
-                } else {
-                  setHistoryIndex(index);
-                  setCommand(history[index] || '');
-                }
-              }
-              if (e.ctrlKey && e.key === 'l') {
-                e.preventDefault();
-                setLines([]);
-              }
-              if (e.ctrlKey && e.key === 'c') {
-                if (!window.getSelection()?.toString()) {
-                  e.preventDefault();
-                  setCommand('');
-                  append('^C');
-                }
-              }
-              if (e.key === 'Tab') {
-                e.preventDefault();
-                const matches = COMMANDS.filter((c) => c.startsWith(command));
-                if (matches.length === 1) setCommand(matches[0] + ' ');
-              }
+            >
+              <ShellView
+                shell={tab.shell}
+                token={token}
+                generation={tab.generation}
+                theme={theme}
+                fontSize={fontSize}
+                animations={prefs.animations}
+                visible={tab.id === active}
+                search={search && tab.id === active}
+                onCloseSearch={() => setSearch(false)}
+                register={(api) => shellRefs.current.set(tab.id, api)}
+                onState={(state, detail) => {
+                  if (state === 'restart') {
+                    restart(tab.id);
+                    return;
+                  }
+                  if (state === 'search') {
+                    setSearch(true);
+                    return;
+                  }
+                  patchTab(tab.id, { state, detail });
+                  if (state === 'error' && detail && /token/i.test(detail)) setAskToken(true);
+                  if (state === 'error' && /node-pty|turned off/i.test(detail || ''))
+                    setStatusTick((t) => t + 1);
+                }}
+                onReady={(ready) => {
+                  setInfo(ready);
+                  patchTab(tab.id, { title: ready.shellName, resolvedShell: ready.shell });
+                  setStatus((current) => ({
+                    ...(current || { enabled: true }),
+                    enabled: true,
+                    shells: ready.shells,
+                    cwd: ready.cwd,
+                  }));
+                }}
+                onTitle={(title) => {
+                  if (title.trim()) patchTab(tab.id, { title: title.trim().slice(0, 40) });
+                }}
+                onBell={() => {
+                  if (tab.id !== active) patchTab(tab.id, { bell: true });
+                }}
+              />
+            </Suspense>
+          ),
+        )}
+        {askToken && (
+          <form
+            className="terminal-token"
+            onSubmit={(e) => {
+              e.preventDefault();
+              localStorage.setItem(TOKEN_KEY, JSON.stringify(token));
+              setAskToken(false);
+              restart(activeTab.id);
             }}
-          />
-        </form>
+          >
+            <KeyRound size={16} />
+            <div>
+              <strong>This server asks for an access token.</strong>
+              <p>Paste the value of WR_SHELL_TOKEN from the machine running Window React.</p>
+              <input
+                autoFocus
+                type="password"
+                value={token}
+                aria-label="Shell access token"
+                placeholder="Access token"
+                onChange={(e) => setToken(e.target.value)}
+              />
+              <div className="terminal-token-actions">
+                <button type="submit">Connect</button>
+                <button type="button" onClick={() => setAskToken(false)}>
+                  Not now
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
       </div>
       <div className="terminal-status">
-        <span>
-          {running ? <Package size={12} /> : <ShieldCheck size={12} />}
-          {running
-            ? `npm is running on the Node.js host · ${running}`
-            : 'Virtual files. Only npm / npx reach the Node.js host.'}
+        <span className="terminal-status-state">
+          {activeTab.kind === 'workspace' ? (
+            <ShieldCheck size={12} />
+          ) : activeTab.state === 'running' ? (
+            <TerminalSquare size={12} />
+          ) : activeTab.state === 'connecting' ? (
+            <Loader2 size={12} className="spinning" />
+          ) : (
+            <Circle size={10} />
+          )}
+          <span title={stateLabel}>{stateLabel}</span>
         </span>
         <span>
-          UTF-8 <span className="status-divider" />
-          WSH
+          {!shellAvailable && status?.reason && (
+            <button
+              className="terminal-status-warning"
+              onClick={() => setStatusTick((t) => t + 1)}
+              title={status.reason}
+            >
+              {status.code === 'disabled' ? 'Shell off (WR_SHELL)' : 'node-pty missing · retry'}
+            </button>
+          )}
+          {info?.platform === 'win32' ? 'ConPTY' : 'PTY'} <span className="status-divider" />
+          xterm-256color <span className="status-divider" />
+          UTF-8
         </span>
       </div>
     </div>
