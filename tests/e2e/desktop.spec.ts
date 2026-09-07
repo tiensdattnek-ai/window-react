@@ -123,19 +123,25 @@ test('terminal opens a real shell on the Node.js host and runs npm', async ({ pa
   const terminal = page.getByRole('region', { name: 'Terminal window', exact: true });
   const status = terminal.locator('.terminal-status-state');
   await expect(status).toContainText(/Real .* on/, { timeout: 30_000 });
-  const screen = terminal.locator('.xterm-screen');
-  await expect(screen).toBeVisible();
+  await expect(terminal.locator('.xterm-screen')).toBeVisible();
   // Keystrokes go to a real PTY; the shell echoes them and runs the command.
   await terminal.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('echo wr-$((6*7)) && npm --version');
   await page.keyboard.press('Enter');
-  await expect(screen).toContainText('wr-42', { timeout: 15_000 });
-  await expect(screen).toContainText(/\d+\.\d+\.\d+/, { timeout: 60_000 });
-  // Find bar searches the scrollback.
+  // xterm may paint on a canvas (WebGL) or in the DOM, so the output is verified through the
+  // find bar, which searches the real terminal buffer either way. The typed command line contains
+  // "wr-$((6*7))", so the only "wr-42" is the echoed output.
+  const count = terminal.locator('.shell-search-count');
   await terminal.getByRole('button', { name: 'Find in terminal' }).click();
-  await terminal.getByRole('textbox', { name: 'Find in terminal' }).fill('wr-42');
-  await expect(terminal.locator('.shell-search-count')).toContainText(/1 of/);
+  const find = terminal.getByRole('textbox', { name: 'Find in terminal' });
+  await find.fill('wr-42');
+  await expect(count).toContainText('1 of 1', { timeout: 15_000 });
+  // npm prints its version on a line of its own (the regex may also match a prompt line).
+  await terminal.getByRole('button', { name: 'Use regular expression' }).click();
+  await find.fill('^\\d+\\.\\d+\\.\\d+$');
+  await expect(count).toContainText(/^1 of \d+$/, { timeout: 60_000 });
   await page.keyboard.press('Escape');
+  await expect(terminal.locator('.shell-search')).toHaveCount(0);
   // Exiting the shell is reported, and Enter starts a fresh one.
   await terminal.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('exit 3');
@@ -143,6 +149,33 @@ test('terminal opens a real shell on the Node.js host and runs npm', async ({ pa
   await expect(status).toContainText('exited with code 3', { timeout: 15_000 });
   await page.keyboard.press('Enter');
   await expect(status).toContainText(/Real .* on/, { timeout: 30_000 });
+});
+
+test('a crashing app window never takes the desktop down', async ({ page }) => {
+  await openApp(page, 'Terminal');
+  const terminal = page.getByRole('region', { name: 'Terminal window', exact: true });
+  await expect(terminal.locator('.terminal-status-state')).toContainText(/Real .* on/, {
+    timeout: 30_000,
+  });
+  // An unfinished regular expression used to throw straight out of React's event handler.
+  await terminal.getByRole('button', { name: 'Find in terminal' }).click();
+  await terminal.getByRole('button', { name: 'Use regular expression' }).click();
+  await terminal.getByRole('textbox', { name: 'Find in terminal' }).fill('wr-(');
+  await expect(terminal.locator('.shell-search-count')).toHaveText('Invalid pattern');
+  await page.keyboard.press('Escape');
+  // A render error inside one app is contained by that window's boundary.
+  await page.evaluate(() => {
+    localStorage.setItem('wr:terminal-font', '"not a number"');
+    localStorage.setItem('wr:terminal-shell', JSON.stringify({ nested: true }));
+  });
+  await page.reload();
+  await openApp(page, 'Terminal');
+  await expect(terminal.locator('.terminal-zoom b')).toHaveText('13');
+  await expect(terminal.locator('.terminal-status-state')).toContainText(/Real .* on/, {
+    timeout: 30_000,
+  });
+  await expect(page.locator('.recovery-screen')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Start menu', exact: true })).toBeVisible();
 });
 
 test('terminal keeps the safe workspace shell as a tab', async ({ page }) => {

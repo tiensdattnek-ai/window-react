@@ -88,6 +88,7 @@ git status
 - **Nhiều tab** (Ctrl + Shift + T mở, Ctrl + Shift + W đóng, Ctrl + Tab chuyển, bấm chuột giữa để đóng), **tìm kiếm** trong scrollback (Ctrl + Shift + F, hỗ trợ regex và phân biệt hoa thường), **zoom chữ** (Ctrl + = / Ctrl + - / Ctrl + 0), **Quick actions** gõ sẵn lệnh thường dùng, tiêu đề tab cập nhật theo tiêu đề shell, chấm vàng khi tab nền có bell.
 - **Copy / paste:** Ctrl + Shift + C / Ctrl + Shift + V; Ctrl + C khi đang bôi đen sẽ copy thay vì gửi SIGINT; Cmd + C / Cmd + V trên macOS; bấm giữ Ctrl + click để mở URL.
 - **Workspace shell** cũ (chỉ thao tác hệ thống tệp ảo, không chạm ổ đĩa) vẫn còn: **▾ → Workspace shell**. Các lệnh `ls`, `cd`, `cat`, `mkdir`, `echo >`, `rm` (đưa vào Recycle Bin), `open`, `calc`, `theme`, `wallpaper`, `sysinfo`, `neofetch`… hoạt động như trước.
+- **Kết xuất:** dùng WebGL khi trình duyệt có GPU, tự chuyển sang DOM renderer khi không (Remote Desktop, máy ảo, headless) — cả hai đều được kiểm thử. Mỗi cửa sổ ứng dụng có **error boundary riêng**: một app gặp sự cố chỉ hiển thị "Try again / Close" trong cửa sổ đó, desktop và các app khác không bị ảnh hưởng.
 
 #### Bảo mật của shell
 

@@ -1299,6 +1299,11 @@
   min-height: 0;
   padding: 12px 6px 8px 14px;
   overflow: hidden;
+  /* xterm stacks its own layers (canvases, helpers, scrollbar) with z-indexes up to 11; keep them
+     all inside this stacking context so the find bar and token prompt stay clickable above it. */
+  position: relative;
+  isolation: isolate;
+  z-index: 1;
 }
 .shell-host .xterm {
   height: 100%;
@@ -1307,15 +1312,8 @@
   scrollbar-width: thin;
   scrollbar-color: #a4b99b2e transparent;
 }
-.shell-host .xterm .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
-}
-.shell-host .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #a4b99b2e;
+.shell-host .xterm .xterm-scrollable-element > .scrollbar > .slider {
   border-radius: 8px;
-}
-.shell-host .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #a4b99b4d;
 }
 .shell-host .xterm:focus .xterm-cursor-layer,
 .shell-host .xterm.focus {

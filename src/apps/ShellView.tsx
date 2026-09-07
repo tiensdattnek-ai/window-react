@@ -42,10 +42,34 @@ export interface ShellViewProps {
   onTitle: (title: string) => void;
   onBell?: () => void;
 }
+function safely(action: () => void) {
+  try {
+    action();
+  } catch (error) {
+    console.warn('Window React terminal:', error);
+  }
+}
+function hasWebgl2() {
+  try {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+    const ok = Boolean(context);
+    context?.getExtension('WEBGL_lose_context')?.loseContext();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 const ESC = '\x1b';
 const dim = (text: string) => `${ESC}[2m${text}${ESC}[0m`;
 const bold = (text: string) => `${ESC}[1m${text}${ESC}[0m`;
 const red = (text: string) => `${ESC}[38;2;223;171;147m${text}${ESC}[0m`;
+// xterm 6 draws its own overlay scrollbar; keep it as quiet as the rest of the app.
+const SCROLLBAR = {
+  scrollbarSliderBackground: 'rgba(164, 185, 155, 0.18)',
+  scrollbarSliderHoverBackground: 'rgba(164, 185, 155, 0.3)',
+  scrollbarSliderActiveBackground: 'rgba(164, 185, 155, 0.42)',
+};
 // Printable ANSI palette that sits well on the app's forest-green surface.
 const PALETTE = {
   black: '#1c2b25',
@@ -92,6 +116,7 @@ export function ShellView({
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
   const [results, setResults] = useState<{ index: number; count: number } | null>(null);
+  const [badPattern, setBadPattern] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
 
   // Create the xterm instance once per mount.
@@ -123,6 +148,7 @@ export function ShellView({
         cursorAccent: theme.background,
         selectionBackground: theme.selection,
         selectionInactiveBackground: theme.selection,
+        ...SCROLLBAR,
         ...PALETTE,
       },
     });
@@ -141,12 +167,22 @@ export function ShellView({
     );
     xterm.unicode.activeVersion = '11';
     xterm.open(element);
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      xterm.loadAddon(webgl);
-    } catch {
-      /* fall back to the DOM renderer (no WebGL, e.g. remote desktop) */
+    // GPU renderer when the browser has a usable WebGL2 context; otherwise (remote desktop,
+    // software rendering, headless) stay on the DOM renderer. A half-initialised WebGL addon
+    // must be disposed immediately, or xterm.dispose() will trip over it later.
+    let webgl: WebglAddon | null = null;
+    if (hasWebgl2()) {
+      try {
+        webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          safely(() => webgl?.dispose());
+          webgl = null;
+        });
+        xterm.loadAddon(webgl);
+      } catch {
+        safely(() => webgl?.dispose());
+        webgl = null;
+      }
     }
     // Familiar desktop shortcuts on top of the raw terminal keys:
     // Ctrl+Shift+C / Ctrl+Shift+V copy & paste, Ctrl+C with a selection copies instead of SIGINT,
@@ -203,8 +239,10 @@ export function ShellView({
       },
     });
     return () => {
-      disposables.forEach((d) => d.dispose());
-      xterm.dispose();
+      disposables.forEach((d) => safely(() => d.dispose()));
+      safely(() => webgl?.dispose());
+      // Never let a renderer teardown error escape into React (it would unmount the desktop).
+      safely(() => xterm.dispose());
       term.current = null;
       fit.current = null;
       searcher.current = null;
@@ -228,7 +266,7 @@ export function ShellView({
       selectionBackground: theme.selection,
       selectionInactiveBackground: theme.selection,
     };
-    fit.current?.fit();
+    safely(() => fit.current?.fit());
   }, [fontSize, animations, theme]);
 
   // Start (or restart) the shell session.
@@ -236,7 +274,7 @@ export function ShellView({
     const xterm = term.current;
     if (!xterm) return;
     xterm.reset();
-    fit.current?.fit();
+    safely(() => fit.current?.fit());
     callbacks.current.onState('connecting');
     xterm.write(dim('Connecting to the Node.js host…\r\n'));
     const current = new ShellSession({
@@ -296,7 +334,7 @@ export function ShellView({
     const refit = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        if (element.clientWidth > 0 && element.clientHeight > 0) fit.current?.fit();
+        if (element.clientWidth > 0 && element.clientHeight > 0) safely(() => fit.current?.fit());
       });
     };
     refit();
@@ -336,10 +374,19 @@ export function ShellView({
     if (!text) {
       searcher.current?.clearDecorations();
       setResults(null);
+      setBadPattern(false);
       return;
     }
-    if (direction > 0) searcher.current?.findNext(text, searchOptions());
-    else searcher.current?.findPrevious(text, searchOptions());
+    // An unfinished regular expression ("[", "(") is not an error worth surfacing anywhere but here.
+    try {
+      if (direction > 0) searcher.current?.findNext(text, searchOptions());
+      else searcher.current?.findPrevious(text, searchOptions());
+      setBadPattern(false);
+    } catch {
+      searcher.current?.clearDecorations();
+      setResults(null);
+      setBadPattern(true);
+    }
   }
   return (
     <div className="shell-view" hidden={!visible}>
@@ -379,7 +426,13 @@ export function ShellView({
             }}
           />
           <span className="shell-search-count" aria-live="polite">
-            {query ? (results ? `${results.index + 1} of ${results.count}` : 'No results') : ''}
+            {!query
+              ? ''
+              : badPattern
+                ? 'Invalid pattern'
+                : results
+                  ? `${results.index + 1} of ${results.count}`
+                  : 'No results'}
           </span>
           <button
             type="button"

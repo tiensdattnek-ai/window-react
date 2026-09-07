@@ -28,6 +28,7 @@ import { APPS } from '../lib/data';
 import type { AppId } from '../lib/types';
 import { AppIcon, WindowLogo } from './AppIcon';
 import { AppWindow } from './Window';
+import { AppErrorBoundary } from './AppErrorBoundary';
 import { Dialog, IconButton } from './Shared';
 import { StartMenu } from './StartMenu';
 import { Notifications, QuickSettings } from './SystemPanels';
@@ -241,29 +242,31 @@ export function Desktop() {
       <div className="windows-layer">
         {windows.map((win) => (
           <AppWindow key={win.id} window={win}>
-            {win.id === 'explorer' ? (
-              <Explorer data={win.data} />
-            ) : win.id === 'notes' ? (
-              <Notes data={win.data} />
-            ) : win.id === 'browser' ? (
-              <Browser />
-            ) : win.id === 'music' ? (
-              <Music data={win.data} launchKey={win.launchKey} />
-            ) : win.id === 'terminal' ? (
-              <Terminal />
-            ) : win.id === 'settings' ? (
-              <Settings data={win.data} />
-            ) : win.id === 'photos' ? (
-              <Photos data={win.data} />
-            ) : win.id === 'calculator' ? (
-              <Calculator />
-            ) : win.id === 'calendar' ? (
-              <Calendar />
-            ) : win.id === 'weather' ? (
-              <Weather />
-            ) : (
-              <Focus />
-            )}
+            <AppErrorBoundary app={win.title} onClose={() => workspace.closeApp(win.id)}>
+              {win.id === 'explorer' ? (
+                <Explorer data={win.data} />
+              ) : win.id === 'notes' ? (
+                <Notes data={win.data} />
+              ) : win.id === 'browser' ? (
+                <Browser />
+              ) : win.id === 'music' ? (
+                <Music data={win.data} launchKey={win.launchKey} />
+              ) : win.id === 'terminal' ? (
+                <Terminal />
+              ) : win.id === 'settings' ? (
+                <Settings data={win.data} />
+              ) : win.id === 'photos' ? (
+                <Photos data={win.data} />
+              ) : win.id === 'calculator' ? (
+                <Calculator />
+              ) : win.id === 'calendar' ? (
+                <Calendar />
+              ) : win.id === 'weather' ? (
+                <Weather />
+              ) : (
+                <Focus />
+              )}
+            </AppErrorBoundary>
           </AppWindow>
         ))}
       </div>

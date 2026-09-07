@@ -80,6 +80,11 @@ const QUICK_ACTIONS: QuickAction[] = [
 // xterm.js and its addons are only needed by the real shell, so they load on first use.
 const ShellView = lazy(() => import('./ShellView').then((m) => ({ default: m.ShellView })));
 let nextTab = 1;
+/** Last shell the user picked; anything that is not a plain id falls back to the server default. */
+function savedShell() {
+  const saved: unknown = safeRead(SHELL_KEY, '');
+  return typeof saved === 'string' && /^[\w.-]{0,40}$/.test(saved) ? saved : '';
+}
 function makeTab(kind: Tab['kind'], shell?: string, title?: string): Tab {
   return {
     id: nextTab++,
@@ -94,14 +99,15 @@ export function Terminal() {
   const { prefs, notify, activeApp } = useWorkspace();
   const [status, setStatus] = useState<ShellStatus | null>(null);
   const [statusTick, setStatusTick] = useState(0);
-  const [tabs, setTabs] = useState<Tab[]>(() => [makeTab('shell', safeRead(SHELL_KEY, ''))]);
+  const [tabs, setTabs] = useState<Tab[]>(() => [makeTab('shell', savedShell())]);
   const [active, setActive] = useState<number>(() => tabs[0].id);
-  const [fontSize, setFontSize] = useState<number>(() =>
-    Math.min(MAX_FONT, Math.max(MIN_FONT, safeRead(FONT_KEY, 13))),
-  );
+  const [fontSize, setFontSize] = useState<number>(() => {
+    const saved = Number(safeRead(FONT_KEY, 13));
+    return Number.isFinite(saved) ? Math.min(MAX_FONT, Math.max(MIN_FONT, saved)) : 13;
+  });
   const [menu, setMenu] = useState<'new' | 'actions' | null>(null);
   const [search, setSearch] = useState(false);
-  const [token, setToken] = useState<string>(() => safeRead(TOKEN_KEY, ''));
+  const [token, setToken] = useState<string>(() => String(safeRead(TOKEN_KEY, '') ?? ''));
   const [askToken, setAskToken] = useState(false);
   const [info, setInfo] = useState<ShellInfo | null>(null);
   const shellRefs = useRef(new Map<number, ShellApi>());
@@ -159,7 +165,7 @@ export function Terminal() {
       const index = items.findIndex((t) => t.id === id);
       const next = items.filter((t) => t.id !== id);
       if (!next.length) {
-        const fresh = makeTab('shell', safeRead(SHELL_KEY, ''));
+        const fresh = makeTab('shell', savedShell());
         setActive(fresh.id);
         return [fresh];
       }
@@ -194,7 +200,7 @@ export function Terminal() {
       const key = e.key.toLowerCase();
       if (e.ctrlKey && e.shiftKey && key === 't') {
         e.preventDefault();
-        openTab('shell', safeRead(SHELL_KEY, ''));
+        openTab('shell', savedShell());
       } else if (e.ctrlKey && e.shiftKey && key === 'w') {
         e.preventDefault();
         closeTab(active);
@@ -283,7 +289,7 @@ export function Terminal() {
             <button
               aria-label="New shell tab"
               title="New tab (Ctrl + Shift + T)"
-              onClick={() => openTab('shell', safeRead(SHELL_KEY, ''))}
+              onClick={() => openTab('shell', savedShell())}
             >
               <Plus size={13} />
             </button>
